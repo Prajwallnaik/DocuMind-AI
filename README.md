@@ -95,7 +95,6 @@ documind-ai/
 │   ├── vectorstore.py      # ChromaDB build & similarity search
 │   └── chain.py            # LangChain RetrievalQA chain
 │
-├── assets/                 # Screenshots and demo GIFs
 ├── requirements.txt
 ├── .env.example
 └── README.md
