@@ -18,11 +18,7 @@ DocuMind AI is a Retrieval-Augmented Generation (RAG) application that enables u
 
 ## How It Works — Architecture
 
-```text
-Upload → Parse → Chunk → Embed → Store (ChromaDB)
-                                      ↓
-Question → Embed → Vector Search → Retrieve Top-K → LLM → Answer
-```
+![RAG Architecture Overview](assets/architecture.png)
 
 1. **Upload**: Users provide PDF or TXT files via the Streamlit interface.
 2. **Parse**: The application extracts raw text content from the uploaded documents.
