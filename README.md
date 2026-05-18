@@ -11,10 +11,6 @@
 
 DocuMind AI is a Retrieval-Augmented Generation (RAG) application that enables users to upload PDF and text documents for natural language querying. The system addresses LLM hallucination by restricting answers strictly to the semantic context retrieved from the uploaded documents. Designed for developers, AI/ML learners, and recruiters, the application demonstrates production-ready integration of local vector storage and dynamic chunk retrieval.
 
-## Demo
-
-![DocuMind AI Demo](assets/demo.gif)
-*A demonstration of DocuMind AI processing documents and retrieving precise answers with source chunk transparency.*
 
 ## How It Works — Architecture
 
