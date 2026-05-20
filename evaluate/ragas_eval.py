@@ -59,18 +59,31 @@ def run_ragas_evaluation(qa_pairs: list) -> tuple:
         - DataFrame with per-question scores for every computed metric.
         - Boolean flag indicating whether Context Precision was evaluated.
     """
-    api_key = os.environ.get("GOOGLE_API_KEY")
-    if not api_key:
+    openrouter_key = os.environ.get("OPENROUTER_API_KEY")
+    google_key = os.environ.get("GOOGLE_API_KEY")
+    
+    if not openrouter_key and not google_key:
         raise EnvironmentError(
-            "GOOGLE_API_KEY is not set. Add it to your .env file and restart the app."
+            "Neither OPENROUTER_API_KEY nor GOOGLE_API_KEY is set. "
+            "Please set at least one in your .env file and restart the app."
         )
 
-    # Initialize Gemini Langchain LLM wrapped in our rate-limiting layer
-    langchain_llm = ChatGoogleGenerativeAI(
-        model="gemini-2.5-flash",
-        temperature=0,
-        google_api_key=api_key
-    )
+    if openrouter_key:
+        from langchain_openai import ChatOpenAI
+        langchain_llm = ChatOpenAI(
+            model="google/gemini-2.5-flash",
+            openai_api_key=openrouter_key,
+            openai_api_base="https://openrouter.ai/api/v1",
+            temperature=0,
+            max_tokens=1024,
+        )
+    else:
+        langchain_llm = ChatGoogleGenerativeAI(
+            model="gemini-2.5-flash",
+            temperature=0,
+            google_api_key=google_key
+        )
+    
     llm = RateLimitedLangchainLLMWrapper(langchain_llm)
 
     # Initialize local HuggingFace embeddings wrapped for RAGAS compatibility

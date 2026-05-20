@@ -3,13 +3,25 @@ from langchain_classic.chains import RetrievalQA
 from langchain_core.prompts import PromptTemplate
 
 def create_qa_chain(retriever):
-    """Creates a RetrievalQA chain using Google Gemini."""
+    """Creates a RetrievalQA chain using Google Gemini (via OpenRouter or native API)."""
     import os
-    llm = ChatGoogleGenerativeAI(
-        model="gemini-2.5-flash",
-        temperature=0,
-        google_api_key=os.environ.get("GOOGLE_API_KEY", "missing_key")
-    )
+    
+    openrouter_key = os.environ.get("OPENROUTER_API_KEY")
+    if openrouter_key:
+        from langchain_openai import ChatOpenAI
+        llm = ChatOpenAI(
+            model="google/gemini-2.5-flash",
+            openai_api_key=openrouter_key,
+            openai_api_base="https://openrouter.ai/api/v1",
+            temperature=0,
+            max_tokens=2048,
+        )
+    else:
+        llm = ChatGoogleGenerativeAI(
+            model="gemini-2.5-flash",
+            temperature=0,
+            google_api_key=os.environ.get("GOOGLE_API_KEY", "missing_key")
+        )
     
     template = """Use the following pieces of context to answer the user's question. 
 If you don't know the answer, just say that you don't know, don't try to make up an answer.
