@@ -116,4 +116,14 @@ def run_ragas_evaluation(qa_pairs: list) -> tuple:
         raise_exceptions=False,
     )
 
-    return result.to_pandas(), has_ground_truth
+    df = result.to_pandas()
+    # Map RAGAS 0.4.x columns back to legacy names to keep app.py happy
+    rename_map = {
+        "user_input": "question",
+        "response": "answer",
+        "retrieved_contexts": "contexts",
+        "reference": "ground_truth"
+    }
+    df = df.rename(columns=rename_map)
+
+    return df, has_ground_truth
