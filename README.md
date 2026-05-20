@@ -34,24 +34,7 @@ Large Language Models are powerful, but they fabricate facts when queried on inf
 
 ## Architecture / How It Works
 
-```
-┌─────────────┐     ┌──────────┐     ┌──────────────┐     ┌────────────┐
-│  User Upload │────▶│  Parser  │────▶│   Chunker    │────▶│  Embedder  │
-│  (PDF / TXT) │     │ (PyPDF)  │     │ (500 / 50 ov)│     │ MiniLM-L6  │
-└─────────────┘     └──────────┘     └──────────────┘     └─────┬──────┘
-                                                                  │
-                                                          ┌───────▼───────┐
-                                                          │   ChromaDB    │
-                                                          │ (Vector Store)│
-                                                          └───────┬───────┘
-┌─────────────┐     ┌──────────────┐     ┌──────────┐           │
-│    Answer   │◀────│ Gemini 2.5   │◀────│ Top-K=10 │◀──────────┘
-│  (Grounded) │     │ Flash (LLM)  │     │ Retrieval│
-└─────────────┘     └──────────────┘     └──────────┘
-        ▲                                      ▲
-        │              User Query              │
-        └──────────────────────────────────────┘
-```
+![DocuMind AI Architecture](assets/architecture.png)
 
 ### Step-by-Step Pipeline
 
