@@ -1,19 +1,43 @@
 """
 RAGAS evaluation module for DocuMind AI.
 
-Supported metrics
------------------
-Faithfulness       : Are all claims in the generated answer supported by the
-                     retrieved context? (does not require ground truth)
-Answer Relevancy   : Does the generated answer address the user's question?
-                     (does not require ground truth)
-Context Precision  : Are the most relevant chunks ranked highest in retrieval?
-                     (requires ground truth)
+Uses RAGAS legacy metrics with a custom rate-limiting LLM wrapper to work
+flawlessly within Google Gemini's free tier quota (15 RPM), along with local
+HuggingFace embeddings to bypass embedding rate limits and API compatibility bugs.
+
+Supported metrics:
+- Faithfulness
+- Answer Relevancy
+- Context Precision
 """
 
 import os
+import time
+import asyncio
 import pandas as pd
 from datasets import Dataset
+
+from ragas.metrics import faithfulness, answer_relevancy, context_precision
+from ragas.llms import _LangchainLLMWrapper
+from ragas.embeddings import LangchainEmbeddingsWrapper
+from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_huggingface import HuggingFaceEmbeddings
+from ragas.run_config import RunConfig
+
+
+class RateLimitedLangchainLLMWrapper(_LangchainLLMWrapper):
+    """
+    Subclass of Ragas LangchainLLMWrapper that introduces a 4-second delay
+    before all synchronous and asynchronous text generation calls.
+    Ensures total compliance with Google Gemini's 15 requests per minute limit.
+    """
+    def generate_text(self, *args, **kwargs):
+        time.sleep(4.0)
+        return super().generate_text(*args, **kwargs)
+
+    async def agenerate_text(self, *args, **kwargs):
+        await asyncio.sleep(4.0)
+        return await super().agenerate_text(*args, **kwargs)
 
 
 def run_ragas_evaluation(qa_pairs: list) -> tuple:
@@ -26,46 +50,34 @@ def run_ragas_evaluation(qa_pairs: list) -> tuple:
         Each dict must contain:
             question     (str)        The user question.
             answer       (str)        The LLM-generated answer.
-            contexts     (list[str])  Retrieved document chunks passed to the LLM.
+            contexts     (list[str])  Retrieved document chunks.
             ground_truth (str)        Expected correct answer.
-                                      Required for Context Precision; optional
-                                      for Faithfulness and Answer Relevancy.
 
     Returns
     -------
     tuple[pd.DataFrame, bool]
         - DataFrame with per-question scores for every computed metric.
-        - Boolean flag indicating whether Context Precision was evaluated
-          (True only when every qa_pair supplies a non-empty ground_truth).
-
-    Raises
-    ------
-    ImportError
-        If `ragas` or `datasets` are not installed.
-    EnvironmentError
-        If GOOGLE_API_KEY is absent from the environment.
+        - Boolean flag indicating whether Context Precision was evaluated.
     """
-    from ragas import evaluate
-    from ragas.metrics import faithfulness, answer_relevancy, context_precision
-    from ragas.llms import LangchainLLMWrapper
-    from langchain_google_genai import ChatGoogleGenerativeAI
-
     api_key = os.environ.get("GOOGLE_API_KEY")
     if not api_key:
         raise EnvironmentError(
             "GOOGLE_API_KEY is not set. Add it to your .env file and restart the app."
         )
 
-    # Wrap Gemini so RAGAS uses the same LLM as the rest of the pipeline.
-    llm_wrapper = LangchainLLMWrapper(
-        ChatGoogleGenerativeAI(
-            model="gemini-2.5-flash",
-            temperature=0,
-            google_api_key=api_key,
-        )
+    # Initialize Gemini Langchain LLM wrapped in our rate-limiting layer
+    langchain_llm = ChatGoogleGenerativeAI(
+        model="gemini-2.5-flash",
+        temperature=0,
+        google_api_key=api_key
     )
+    llm = RateLimitedLangchainLLMWrapper(langchain_llm)
 
-    # Determine whether ground truth is available for all pairs.
+    # Initialize local HuggingFace embeddings wrapped for RAGAS compatibility
+    langchain_embeddings = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
+    embeddings = LangchainEmbeddingsWrapper(langchain_embeddings)
+
+    # Determine whether ground truth is available for all pairs
     has_ground_truth = all(p.get("ground_truth", "").strip() for p in qa_pairs)
 
     data = {
@@ -80,10 +92,14 @@ def run_ragas_evaluation(qa_pairs: list) -> tuple:
     if has_ground_truth:
         metrics.append(context_precision)
 
+    # Run evaluation
+    from ragas import evaluate
     result = evaluate(
         dataset=dataset,
         metrics=metrics,
-        llm=llm_wrapper,
+        llm=llm,
+        embeddings=embeddings,
+        run_config=RunConfig(max_workers=1, timeout=300),
         raise_exceptions=False,
     )
 
