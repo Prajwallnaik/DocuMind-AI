@@ -183,21 +183,43 @@ with tab_eval:
         st.write("")
 
         test_cases = []
+        default_test_cases = [
+            {
+                "question": "What are the core technical skills and programming languages of Prajwal Naik?",
+                "ground_truth": "Python, C++, Java, Machine Learning, and MLOps."
+            },
+            {
+                "question": "What is ModelSentinel?",
+                "ground_truth": "ModelSentinel is an AI-powered MLOps Copilot project worked on by Prajwal Naik."
+            },
+            {
+                "question": "What projects has Prajwal Naik worked on?",
+                "ground_truth": "Prajwal Naik has worked on ModelSentinel and various software engineering / AI projects."
+            }
+        ]
+
         for i in range(n_cases):
             st.markdown(f"**Test Case {i + 1}**")
             col_q, col_gt = st.columns(2)
+            
+            # Fetch relevant default question and expected answer if available
+            default_q = default_test_cases[i]["question"] if i < len(default_test_cases) else ""
+            default_gt = default_test_cases[i]["ground_truth"] if i < len(default_test_cases) else ""
+            
             with col_q:
                 q = st.text_input(
                     "Question",
                     key=f"eval_q_{i}",
-                    placeholder=f"Question {i + 1}",
+                    value=default_q,
+                    placeholder=f"Enter Question {i + 1}...",
                     label_visibility="collapsed",
                 )
             with col_gt:
                 gt = st.text_input(
                     "Expected Answer",
                     key=f"eval_gt_{i}",
-                    placeholder="Expected answer (optional — enables Context Precision)",
+                    value=default_gt,
+                    placeholder="Enter expected answer (enables Context Precision)...",
                     label_visibility="collapsed",
                 )
             test_cases.append({"question": q.strip(), "ground_truth": gt.strip()})
@@ -263,12 +285,28 @@ with tab_eval:
                 ("answer_relevancy", "Answer Relevancy"),
                 ("context_precision","Context Precision"),
             ]
+            
+            # Clean up DataFrame columns: convert metric values to float for calculations
+            # We preserve NaNs/Nones for accurate mathematical averages (excluding missing values)
+            import pandas as pd
+            df = df.copy()
+            for col_key, _ in metric_definitions:
+                if col_key in df.columns:
+                    df[col_key] = pd.to_numeric(df[col_key], errors='coerce')
+
             cols = st.columns(3)
             for (col_key, label), col in zip(metric_definitions, cols):
                 with col:
                     if col_key in df.columns:
                         avg = df[col_key].mean()
-                        st.metric(label=label, value=f"{avg:.3f}")
+                        if pd.notnull(avg):
+                            st.metric(label=label, value=f"{avg:.3f}")
+                        else:
+                            st.metric(
+                                label=label,
+                                value="N/A",
+                                help="This metric was not computed for any test case.",
+                            )
                     else:
                         st.metric(
                             label=label,
@@ -285,8 +323,16 @@ with tab_eval:
                 if col_key in df.columns:
                     display_cols[col_key] = label
 
+            # Create a display-friendly DataFrame with formatted scores and elegant "N/A" placeholders
+            display_df = df.copy()
+            for col_key, _ in metric_definitions:
+                if col_key in display_df.columns:
+                    display_df[col_key] = display_df[col_key].apply(
+                        lambda x: f"{x:.3f}" if pd.notnull(x) else "N/A"
+                    )
+
             st.dataframe(
-                df[list(display_cols.keys())].rename(columns=display_cols),
+                display_df[list(display_cols.keys())].rename(columns=display_cols),
                 use_container_width=True,
                 hide_index=True,
             )
