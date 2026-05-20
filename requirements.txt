@@ -9,3 +9,6 @@ python-dotenv
 tiktoken
 sentence-transformers
 langchain-google-genai
+# RAGAS evaluation
+ragas>=0.2
+datasets

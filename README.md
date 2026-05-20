@@ -11,6 +11,7 @@
 [![ChromaDB](https://img.shields.io/badge/ChromaDB-VectorDB-FF6B35?style=for-the-badge)](https://www.trychroma.com/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-22C55E?style=for-the-badge)](./LICENSE)
 [![GitHub Stars](https://img.shields.io/github/stars/Prajwallnaik/DocuMind-AI?style=for-the-badge&logo=github)](https://github.com/Prajwallnaik/DocuMind-AI/stargazers)
+[![RAGAS](https://img.shields.io/badge/RAGAS-Evaluation-8B5CF6?style=for-the-badge)](https://docs.ragas.io/)
 
 </div>
 
@@ -62,6 +63,7 @@ Large Language Models are powerful, but they fabricate facts when queried on inf
 | **File Parsing** | `PyPDF` | Extraction of text from PDF binaries |
 | **Text Splitting** | `RecursiveCharacterTextSplitter` | Context-aware document segmentation |
 | **Config** | `python-dotenv` | Secure API key and environment variable management |
+| **Evaluation** | [RAGAS](https://docs.ragas.io/) + `datasets` | Faithfulness, Answer Relevancy, and Context Precision scoring |
 
 ---
 
@@ -134,6 +136,10 @@ DocuMind-AI/
 │   ├── vectorstore.py      # ChromaDB vectorstore creation & top-k retriever
 │   └── chain.py            # LangChain RetrievalQA chain with Gemini 2.5 Flash
 │
+├── evaluate/               # RAGAS evaluation package
+│   ├── __init__.py
+│   └── ragas_eval.py       # Faithfulness, Answer Relevancy & Context Precision evaluation
+│
 ├── assets/                 # Static assets (architecture diagrams, screenshots)
 ├── chroma_db/              # Local ChromaDB persistence directory
 ├── requirements.txt        # Python dependencies
@@ -155,6 +161,37 @@ DocuMind-AI/
 - **Local vector storage** — ChromaDB runs in-process; no external database or cloud dependency required
 - **Secure configuration** — API keys managed entirely through `.env` and `python-dotenv`
 - **No frontend code** — Entire UI delivered through Streamlit's Python API
+- **RAGAS evaluation** — Built-in evaluation tab measures Faithfulness, Answer Relevancy, and Context Precision using the RAGAS framework
+
+---
+
+## RAG Evaluation
+
+DocuMind AI includes a dedicated **RAG Evaluation** tab powered by [RAGAS](https://docs.ragas.io/) — the standard open-source framework for measuring RAG pipeline quality.
+
+### How to use
+
+1. Process your documents using the sidebar.
+2. Navigate to the **RAG Evaluation** tab.
+3. Enter one or more test questions. Optionally provide an expected answer for each.
+4. Click **Run Evaluation** — the system will query the pipeline and score each response automatically.
+
+### Metrics
+
+| Metric | Description | Ground Truth Required |
+|---|---|---|
+| **Faithfulness** | Proportion of claims in the answer that are directly supported by the retrieved context. | No |
+| **Answer Relevancy** | Degree to which the generated answer addresses the question asked. | No |
+| **Context Precision** | Whether the most relevant retrieved chunks appear at the top of the ranked list. | Yes |
+
+> All scores are in the range **[0, 1]**. Higher values indicate better pipeline performance. Context Precision is automatically enabled when expected answers are provided for all test cases.
+
+### Implementation
+
+| File | Role |
+|---|---|
+| `evaluate/ragas_eval.py` | Wraps the RAGAS `evaluate()` call; configures Gemini 2.5 Flash as the internal evaluator LLM |
+| `app.py` (RAG Evaluation tab) | Streamlit UI — collects test cases, invokes the pipeline, and renders metric cards and a per-question breakdown table |
 
 ---
 
@@ -190,7 +227,7 @@ Planned Enhancements
   [ ] Source chunk highlights rendered inline with answers
   [ ] Docker containerization for one-command deployment
   [ ] Deployment to Streamlit Community Cloud
-  [ ] Evaluation harness (RAGAS / TruLens) for answer quality scoring
+  [x] Evaluation harness (RAGAS) for Faithfulness, Answer Relevancy & Context Precision
   [ ] Conversational memory with follow-up question support
 ```
 
