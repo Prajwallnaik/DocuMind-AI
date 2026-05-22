@@ -10,7 +10,6 @@
 [![Google Gemini](https://img.shields.io/badge/Gemini_2.5_Flash-LLM-4285F4?style=for-the-badge&logo=google&logoColor=white)](https://ai.google.dev/)
 [![ChromaDB](https://img.shields.io/badge/ChromaDB-VectorDB-FF6B35?style=for-the-badge)](https://www.trychroma.com/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-22C55E?style=for-the-badge)](./LICENSE)
-[![GitHub Stars](https://img.shields.io/github/stars/Prajwallnaik/DocuMind-AI?style=for-the-badge&logo=github)](https://github.com/Prajwallnaik/DocuMind-AI/stargazers)
 [![RAGAS](https://img.shields.io/badge/RAGAS-Evaluation-8B5CF6?style=for-the-badge)](https://docs.ragas.io/)
 
 </div>
