@@ -191,45 +191,6 @@ DocuMind AI includes a dedicated **RAG Evaluation** tab powered by [RAGAS](https
 |---|---|
 | `evaluate/ragas_eval.py` | Wraps the RAGAS `evaluate()` call; configures Gemini 2.5 Flash as the internal evaluator LLM |
 | `app.py` (RAG Evaluation tab) | Streamlit UI — collects test cases, invokes the pipeline, and renders metric cards and a per-question breakdown table |
-
----
-
-## Limitations & Known Issues
-
-| Issue | Details |
-|-------|---------|
-| **No session persistence** | The ChromaDB collection is ephemeral — documents must be re-uploaded after each app restart |
-| **Large document performance** | PDFs with 100+ pages may cause slow processing due to sequential embedding |
-| **Answer quality ceiling** | Responses are bounded by the quality, completeness, and formatting of the source documents |
-| **Context window limits** | Very high `TOP_K` values may exceed the LLM's context window, causing truncation or errors |
-| **Single language enforcement** | Queries are prefixed with an English instruction; multilingual documents may yield inconsistent results |
-| **No DOCX / CSV support** | Only `.pdf` and `.txt` file formats are currently supported |
-
----
-
-## Roadmap / Future Improvements
-
-```text
-Core Pipeline
-  [x] PDF and TXT file ingestion
-  [x] ChromaDB local vector store
-  [x] LangChain RetrievalQA chain
-  [x] Google Gemini 2.5 Flash integration
-  [x] Multi-file upload in a single session
-  [x] Persistent chat history within session
-
-Planned Enhancements
-  [ ] Persistent cross-session memory (database-backed)
-  [ ] FAISS as an alternative / faster vector store
-  [ ] DOCX and CSV file format support
-  [ ] Configurable embedding model selection in the UI
-  [ ] Source chunk highlights rendered inline with answers
-  [ ] Docker containerization for one-command deployment
-  [ ] Deployment to Streamlit Community Cloud
-  [x] Evaluation harness (RAGAS) for Faithfulness, Answer Relevancy & Context Precision
-  [ ] Conversational memory with follow-up question support
-```
-
 ---
 
 ## License

@@ -122,12 +122,11 @@ with tab_query:
 
         # Chat input
         if user_question := st.chat_input("Enter your question:"):
-            # Display user message
-            st.session_state.messages.append({"role": "user", "content": user_question})
+            # Display user message immediately in the active frame
             with st.chat_message("user"):
                 st.markdown(user_question)
                 
-            # Display assistant response
+            # Display assistant generation state and answer immediately
             with st.chat_message("assistant"):
                 with st.spinner("Generating answer..."):
                     try:
@@ -138,12 +137,16 @@ with tab_query:
                         
                         st.markdown(answer)
 
-                        # Append assistant message to history
+                        # Commit both user and assistant messages to persistent session state history
+                        st.session_state.messages.append({"role": "user", "content": user_question})
                         st.session_state.messages.append({
                             "role": "assistant", 
                             "content": answer,
                             "source_docs": source_docs
                         })
+                        
+                        # Trigger a script rerun to force a clean historical draw with input widget strictly at the bottom
+                        st.rerun()
                     except Exception as e:
                         st.error(f"An error occurred while generating the answer: {e}")
     else:
