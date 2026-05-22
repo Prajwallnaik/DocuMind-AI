@@ -173,7 +173,7 @@ with tab_eval:
         st.warning("No documents have been processed. Upload and process documents using the sidebar first.")
     else:
         n_cases = int(st.number_input(
-            "Number of test cases", min_value=1, max_value=10, value=3, step=1
+            "Number of test cases", min_value=1, max_value=10, value=1, step=1
         ))
 
         st.markdown(
@@ -183,34 +183,14 @@ with tab_eval:
         st.write("")
 
         test_cases = []
-        default_test_cases = [
-            {
-                "question": "What are the core technical skills and programming languages of Prajwal Naik?",
-                "ground_truth": "Python, C++, Java, Machine Learning, and MLOps."
-            },
-            {
-                "question": "What is ModelSentinel?",
-                "ground_truth": "ModelSentinel is an AI-powered MLOps Copilot project worked on by Prajwal Naik."
-            },
-            {
-                "question": "What projects has Prajwal Naik worked on?",
-                "ground_truth": "Prajwal Naik has worked on ModelSentinel and various software engineering / AI projects."
-            }
-        ]
-
         for i in range(n_cases):
             st.markdown(f"**Test Case {i + 1}**")
             col_q, col_gt = st.columns(2)
-            
-            # Fetch relevant default question and expected answer if available
-            default_q = default_test_cases[i]["question"] if i < len(default_test_cases) else ""
-            default_gt = default_test_cases[i]["ground_truth"] if i < len(default_test_cases) else ""
             
             with col_q:
                 q = st.text_input(
                     "Question",
                     key=f"eval_q_{i}",
-                    value=default_q,
                     placeholder=f"Enter Question {i + 1}...",
                     label_visibility="collapsed",
                 )
@@ -218,7 +198,6 @@ with tab_eval:
                 gt = st.text_input(
                     "Expected Answer",
                     key=f"eval_gt_{i}",
-                    value=default_gt,
                     placeholder="Enter expected answer (enables Context Precision)...",
                     label_visibility="collapsed",
                 )
