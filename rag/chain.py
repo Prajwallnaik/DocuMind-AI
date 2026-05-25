@@ -1,5 +1,5 @@
 from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain_classic.chains import RetrievalQA
+from langchain.chains import RetrievalQA
 from langchain_core.prompts import PromptTemplate
 
 def create_qa_chain(retriever):
@@ -25,7 +25,9 @@ def create_qa_chain(retriever):
     
     template = """Use the following pieces of context to answer the user's question. 
 If you don't know the answer, just say that you don't know, don't try to make up an answer.
-Keep the answer concise and grounded in the provided context.
+Keep the answer concise, professional, and grounded in the provided context.
+
+CRITICAL: Do not use any emojis in your response. Keep the tone completely objective, clean, and professional.
 
 Context:
 {context}

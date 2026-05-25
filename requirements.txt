@@ -2,13 +2,13 @@ streamlit
 langchain
 langchain-community
 langchain-openai
-langchain-huggingface
-langchain-chroma
 pypdf
 python-dotenv
 tiktoken
-sentence-transformers
+onnxruntime
+tokenizers
 langchain-google-genai
 # RAGAS evaluation
 ragas>=0.2
 datasets
+eval_type_backport

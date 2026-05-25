@@ -1,11 +1,20 @@
 import os
 import tempfile
+import sys
+
+# Override standard sqlite3 with pysqlite3 to support ChromaDB on older Windows Python
+try:
+    __import__('pysqlite3')
+    sys.modules['sqlite3'] = sys.modules.pop('pysqlite3')
+except Exception:
+    pass
+
 import streamlit as st
 from dotenv import load_dotenv
 
 from rag.loader import load_document
 from rag.chunker import split_documents
-from rag.embedder import get_embedding_model
+from rag.onnx_embedder import get_embedding_model
 from rag.vectorstore import create_vectorstore, get_retriever
 from rag.chain import create_qa_chain
 
@@ -14,32 +23,268 @@ load_dotenv(override=True)
 if "OPENAI_API_KEY" in os.environ and "your_openai" in os.environ["OPENAI_API_KEY"]:
     del os.environ["OPENAI_API_KEY"]
 
-st.set_page_config(page_title="Enterprise Document Intelligence", layout="wide")
+st.set_page_config(
+    page_title="Enterprise Document Intelligence", 
+    layout="wide", 
+    initial_sidebar_state="expanded"
+)
 
 st.markdown("""
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+
 <style>
+    /* Core Typography & Base Styling */
+    html, body, [class*="css"], .stMarkdown {
+        font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif !important;
+    }
+    h1, h2, h3, h4, h5, h6, [data-testid="stMetricValue"] {
+        font-family: 'Outfit', -apple-system, BlinkMacSystemFont, sans-serif !important;
+    }
+
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
-    header {visibility: hidden;}
+    header {background-color: transparent !important;}
+
+    /* Premium Theme & Backgrounds */
+    .stApp {
+        background-color: #090D16 !important;
+        background-image: radial-gradient(circle at 10% 20%, rgba(37, 99, 235, 0.04) 0%, transparent 45%),
+                          radial-gradient(circle at 90% 80%, rgba(59, 130, 246, 0.04) 0%, transparent 45%) !important;
+    }
+
+    /* Sleek Custom Scrollbar */
+    ::-webkit-scrollbar {
+        width: 6px !important;
+        height: 6px !important;
+    }
+    ::-webkit-scrollbar-track {
+        background: #090D16 !important;
+    }
+    ::-webkit-scrollbar-thumb {
+        background: #1E293B !important;
+        border-radius: 3px !important;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+        background: #2E3E56 !important;
+    }
+
+    /* Sidebar Refinement */
+    section[data-testid="stSidebar"] {
+        background-color: #0D111A !important;
+        border-right: 1px solid #1E293B !important;
+        padding-top: 1.5rem;
+    }
+    section[data-testid="stSidebar"] [data-testid="stMarkdownContainer"] h2 {
+        font-weight: 700;
+        font-size: 1.3rem;
+        background: linear-gradient(135deg, #ffffff 0%, #94a3b8 100%);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        letter-spacing: -0.5px;
+    }
+
+    /* Clean File Uploader Integration */
+    section[data-testid="stFileUploader"] {
+        background-color: #0D111A !important;
+        border: 1px dashed #1E293B !important;
+        border-radius: 8px !important;
+        padding: 1.25rem !important;
+        transition: border-color 0.2s ease !important;
+    }
+    section[data-testid="stFileUploader"]:hover {
+        border-color: #3B82F6 !important;
+    }
+
+    /* Streamlit Tab Customization */
+    .stTabs [data-baseweb="tab-list"] {
+        gap: 4px !important;
+        background-color: #0D111A !important;
+        padding: 4px !important;
+        border-radius: 8px !important;
+        border: 1px solid #1E293B !important;
+    }
+    .stTabs [data-baseweb="tab"] {
+        height: 36px !important;
+        border-radius: 6px !important;
+        padding: 0 16px !important;
+        background-color: transparent !important;
+        color: #64748B !important;
+        font-weight: 500 !important;
+        border: none !important;
+        transition: all 0.2s ease !important;
+    }
+    .stTabs [data-baseweb="tab"]:hover {
+        color: #F1F5F9 !important;
+        background-color: rgba(255,255,255,0.02) !important;
+    }
+    .stTabs [aria-selected="true"] {
+        background-color: #1E293B !important;
+        color: #60A5FA !important;
+        font-weight: 600 !important;
+    }
+    .stTabs [data-baseweb="tab-highlight"] {
+        background-color: #60A5FA !important;
+    }
+
+    /* Clean Metric Card Styling */
+    div[data-testid="metric-container"] {
+        background-color: #0D111A !important;
+        border: 1px solid #1E293B !important;
+        border-radius: 8px !important;
+        padding: 1.25rem !important;
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1) !important;
+        transition: all 0.2s ease !important;
+    }
+    div[data-testid="metric-container"]:hover {
+        border-color: #3B82F6 !important;
+        box-shadow: 0 4px 12px rgba(59, 130, 246, 0.08) !important;
+    }
+    div[data-testid="metric-container"] label {
+        font-size: 0.8rem !important;
+        color: #94A3B8 !important;
+        font-weight: 600 !important;
+        text-transform: uppercase !important;
+        letter-spacing: 1px !important;
+    }
+    div[data-testid="metric-container"] div[data-testid="stMetricValue"] {
+        font-size: 2rem !important;
+        font-weight: 700 !important;
+        background: linear-gradient(135deg, #ffffff 0%, #cbd5e1 100%);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+    }
+
+    /* Buttons Overrides */
+    button[kind="primary"] {
+        background: #2563EB !important;
+        color: white !important;
+        border: none !important;
+        border-radius: 6px !important;
+        font-weight: 600 !important;
+        padding: 0.5rem 1.25rem !important;
+        transition: all 0.2s ease !important;
+        box-shadow: none !important;
+    }
+    button[kind="primary"]:hover {
+        background: #1D4ED8 !important;
+        transform: none !important;
+        box-shadow: none !important;
+    }
+    
+    button[kind="secondary"] {
+        background-color: #0D111A !important;
+        color: #E2E8F0 !important;
+        border: 1px solid #1E293B !important;
+        border-radius: 6px !important;
+        font-weight: 500 !important;
+        transition: all 0.2s ease !important;
+    }
+    button[kind="secondary"]:hover {
+        background-color: #1E293B !important;
+        color: white !important;
+        border-color: #2E3E56 !important;
+    }
+
+    /* Smooth status box refinement */
+    div[data-testid="stStatus"] {
+        border-radius: 8px !important;
+        border: 1px solid #1E293B !important;
+        background-color: #0D111A !important;
+        box-shadow: none !important;
+    }
+
+    /* Styled Tables / Dataframes */
+    [data-testid="stDataFrame"] {
+        border: 1px solid #1E293B !important;
+        border-radius: 8px !important;
+        overflow: hidden !important;
+    }
+
+    /* Info and Warning Alerts styling */
+    div[data-testid="stNotification"] {
+        border-radius: 8px !important;
+        border: 1px solid #1E293B !important;
+        background-color: #0D111A !important;
+    }
+
+    /* Custom Chat Message Container */
+    div[data-testid="stChatMessage"] {
+        background-color: #0D111A !important;
+        border: 1px solid #1E293B !important;
+        border-radius: 8px !important;
+        padding: 1rem 1.25rem !important;
+        margin-bottom: 1rem !important;
+        transition: all 0.2s ease !important;
+    }
+    div[data-testid="stChatMessage"]:hover {
+        border-color: #2E3E56 !important;
+    }
+    
+    /* Clean chat avatars */
+    div[data-testid="stChatMessageAvatar"] {
+        background-color: #1E293B !important;
+        border: 1px solid #2E3E56 !important;
+        border-radius: 6px !important;
+        width: 32px !important;
+        height: 32px !important;
+    }
+
+    /* Modern Custom Chat Input */
+    div[data-testid="stChatInput"] {
+        background-color: #0D111A !important;
+        border: 1px solid #1E293B !important;
+        border-radius: 8px !important;
+        padding: 0.25rem !important;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15) !important;
+    }
+    div[data-testid="stChatInput"] textarea {
+        background-color: transparent !important;
+        color: #E2E8F0 !important;
+        border: none !important;
+        font-size: 0.95rem !important;
+    }
+    div[data-testid="stChatInput"] textarea:focus {
+        box-shadow: none !important;
+    }
 </style>
 
-<div style="margin-bottom: 2rem;">
-    <h1 style="
-        font-weight: 800; 
-        font-size: 3rem;
-        margin-top: -5px;
-        font-size: 3rem;
-        margin-bottom: 0;
-        padding-bottom: 0;
-        color: white;
-        text-shadow: -2px 0px 0px #ff6b6b, 2px 0px 0px #4dabf7;
-    ">DocuMind AI</h1>
-    <p style="
-        font-size: 1.2rem;
-        color: #a5d8ff;
-        margin-top: 5px;
-        font-weight: 400;
-    ">Intelligent document analysis and retrieval system.</p>
+<div style="margin-bottom: 2.5rem; display: flex; align-items: center; gap: 15px;">
+    <div style="
+        background: #2563EB;
+        padding: 12px;
+        border-radius: 8px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    ">
+        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/>
+            <polyline points="14 2 14 8 20 8"/>
+            <line x1="16" y1="13" x2="8" y2="13"/>
+            <line x1="16" y1="17" x2="8" y2="17"/>
+            <line x1="10" y1="9" x2="8" y2="9"/>
+        </svg>
+    </div>
+    <div>
+        <h1 style="
+            font-weight: 800; 
+            font-size: 2.5rem;
+            margin: 0;
+            padding: 0;
+            letter-spacing: -0.5px;
+            background: linear-gradient(135deg, #ffffff 0%, #e2e8f0 70%, #94a3b8 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        ">DocuMind AI</h1>
+        <p style="
+            font-size: 0.95rem;
+            color: #94A3B8;
+            margin: 4px 0 0 0;
+            font-weight: 400;
+        ">Intelligent Document Intelligence & Retrieval Engine</p>
+    </div>
 </div>
 """, unsafe_allow_html=True)
 
@@ -50,14 +295,28 @@ if "vectorstore" not in st.session_state:
     st.session_state.vectorstore = None
 if "eval_results" not in st.session_state:
     st.session_state.eval_results = None
+if "processed_files" not in st.session_state:
+    st.session_state.processed_files = []
 
 # ── Sidebar — document ingestion ───────────────────────────────────────────────
 with st.sidebar:
     st.header("Data Sources")
-    uploaded_files = st.file_uploader("Upload PDF or TXT files", type=["pdf", "txt"], accept_multiple_files=True)
+    uploaded_files = st.file_uploader(
+        "Upload PDF or TXT files",
+        type=["pdf", "txt"],
+        accept_multiple_files=True,
+        label_visibility="collapsed"
+    )
     
+    st.write("")
+    process_btn = st.button(
+        "Process Documents", 
+        type="primary", 
+        use_container_width=True,
+        disabled=not uploaded_files
+    )
 
-    if st.button("Process Documents") and uploaded_files:
+    if process_btn and uploaded_files:
         # Clear chat history and prior evaluation results when new documents are loaded
         st.session_state.messages = []
         st.session_state.eval_results = None
@@ -97,11 +356,51 @@ with st.sidebar:
                     qa_chain = create_qa_chain(retriever)
                     st.session_state.qa_chain = qa_chain
                     
+                    st.session_state.processed_files = [f.name for f in uploaded_files]
+                    
                     status.update(label=f"{len(uploaded_files)} document(s) processed successfully!", state="complete", expanded=False)
+                    st.rerun()
                 else:
                     status.update(label="No valid content found in the uploaded documents.", state="error", expanded=True)
             except Exception as e:
                 status.update(label=f"An error occurred: {e}", state="error", expanded=True)
+
+    if st.session_state.processed_files:
+        st.markdown('<p style="font-size: 0.8rem; color: #94A3B8; text-transform: uppercase; letter-spacing: 1.5px; margin-top: 2rem; margin-bottom: 0.75rem; font-weight: 600;">Active Knowledge Base</p>', unsafe_allow_html=True)
+        for fname in st.session_state.processed_files:
+            st.markdown(f"""
+            <div style="
+                background-color: #0D111A;
+                border: 1px solid #1E293B;
+                border-radius: 6px;
+                padding: 10px 12px;
+                margin-bottom: 8px;
+                font-size: 0.85rem;
+                color: #E2E8F0;
+                display: flex;
+                align-items: center;
+                gap: 8px;
+            ">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#60A5FA" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink: 0;">
+                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                    <polyline points="14 2 14 8 20 8"/>
+                    <line x1="16" y1="13" x2="8" y2="13"/>
+                    <line x1="16" y1="17" x2="8" y2="17"/>
+                    <polyline points="10 9 9 9 8 9"/>
+                </svg>
+                <span style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-weight: 500;">{fname}</span>
+            </div>
+            """, unsafe_allow_html=True)
+            
+        st.write("")
+        if st.button("Reset Knowledge Base", type="secondary", use_container_width=True):
+            st.session_state.qa_chain = None
+            st.session_state.vectorstore = None
+            st.session_state.processed_files = []
+            st.session_state.messages = []
+            st.session_state.eval_results = None
+            st.rerun()
+
 
 # ── Main area — tabbed interface ───────────────────────────────────────────────
 tab_query, tab_eval = st.tabs(["Document Query", "RAG Evaluation"])

@@ -21,7 +21,7 @@ from ragas.metrics import faithfulness, answer_relevancy, context_precision
 from ragas.llms import _LangchainLLMWrapper
 from ragas.embeddings import LangchainEmbeddingsWrapper
 from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain_huggingface import HuggingFaceEmbeddings
+from rag.onnx_embedder import get_embedding_model
 from ragas.run_config import RunConfig
 
 
@@ -86,8 +86,8 @@ def run_ragas_evaluation(qa_pairs: list) -> tuple:
     
     llm = RateLimitedLangchainLLMWrapper(langchain_llm)
 
-    # Initialize local HuggingFace embeddings wrapped for RAGAS compatibility
-    langchain_embeddings = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
+    # Initialize local ONNX embeddings wrapped for RAGAS compatibility
+    langchain_embeddings = get_embedding_model()
     embeddings = LangchainEmbeddingsWrapper(langchain_embeddings)
 
     # Determine whether ground truth is available for all pairs
@@ -113,7 +113,7 @@ def run_ragas_evaluation(qa_pairs: list) -> tuple:
         llm=llm,
         embeddings=embeddings,
         run_config=RunConfig(max_workers=1, timeout=300),
-        raise_exceptions=False,
+        raise_exceptions=True,
     )
 
     df = result.to_pandas()
