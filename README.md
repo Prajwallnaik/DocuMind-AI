@@ -36,7 +36,7 @@ Large Language Models are powerful, but they fabricate facts when queried on inf
 
 ## Architecture / How It Works
 
-![DocuMind AI Architecture](assets/architecture.png)
+![DocuMind AI Architecture](assets/Architecture.png)
 
 ### Step-by-Step Pipeline
 
