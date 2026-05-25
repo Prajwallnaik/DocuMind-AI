@@ -34,3 +34,21 @@ wheels/
 # OS
 .DS_Store
 Thumbs.db
+desktop.ini
+
+# Binaries
+*.dll
+*.exe
+*.so
+*.dylib
+
+# IDE / Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Node (stray lockfiles)
+package-lock.json
+node_modules/
