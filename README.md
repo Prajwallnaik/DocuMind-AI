@@ -37,26 +37,6 @@ Traditional RAG pipelines suffer from information loss (due to model sequence le
 
 ![Architecture](assets/Architecture.png)
 
-```mermaid
-graph TD
-    subgraph Ingestion [Ingestion Pipeline]
-        Doc[Documents] --> SC[Smart Chunking: Token-Optimized / Parent-Child]
-        SC --> CE[Context Enrichment: Metadata links child to parent]
-        CE --> Emb[ONNX Embeddings]
-        Emb --> DB[(Vector DB: Chroma)]
-    end
-
-    subgraph Retrieval [Retrieval & Generation Pipeline]
-        Query[Query] --> QE[Query Expansion: Multi-Query / HyDE]
-        QE --> HR[Hybrid Retrieval: BM25 Keyword + Semantic Vector]
-        HR --> RRF[Fusion: Weighted Reciprocal Rank Fusion]
-        RRF --> RE[Context Reconstruction: Resolve to Parent passages]
-        RE --> RR[Reranker: FlashRank ms-marco ONNX model]
-        RR --> TopK[Top-k Context selection]
-        TopK --> LLM[LLM Generation: Gemini QA Chain]
-        LLM --> Ans[LLM Answer]
-    end
-```
 
 ### Step-by-Step Process
 
