@@ -35,6 +35,8 @@ Traditional RAG pipelines suffer from information loss (due to model sequence le
 
 ## Architecture & Pipeline
 
+![Architecture](assets/Architecture.png)
+
 ```mermaid
 graph TD
     subgraph Ingestion [Ingestion Pipeline]
