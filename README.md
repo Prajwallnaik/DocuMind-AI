@@ -19,127 +19,115 @@
 
 ## Overview
 
-**DocuMind AI** is a production-grade **Retrieval-Augmented Generation (RAG)** application that enables natural language querying over user-supplied documents. Upload any PDF or plain-text file and ask questions — DocuMind retrieves the most relevant passages and grounds every answer strictly in the provided content, eliminating hallucination by design.
+**DocuMind AI** is an advanced, production-grade **Retrieval-Augmented Generation (RAG)** application optimized to act as an intelligent study assistant. By uploading PDFs or plain-text files, you can query documents in natural language. DocuMind automatically profiles your documents at ingestion time to select optimal chunking and retrieval parameters, uses hybrid semantic/keyword search, reranks candidate passages locally, and synthesizes grounded, fact-checked answers via Gemini.
 
 ### Why DocuMind AI?
 
-Large Language Models are powerful, but they fabricate facts when queried on information outside their training data. DocuMind AI addresses this by:
+Traditional RAG pipelines suffer from information loss (due to model sequence length limits) and poor precision (due to noisy retrieved contexts). DocuMind AI implements advanced NLP design patterns to tackle these:
 
-- **Retrieving** only the semantically relevant chunks from the uploaded documents
-- **Grounding** every response to retrieved context (temperature = 0)
-- **Refusing** to speculate when the answer is not present in the source material
-- **Scaling context dynamically** — whole-document summaries use 100% of the content, while targeted questions use precision retrieval
-
-> Built as a full-stack AI portfolio project demonstrating end-to-end RAG pipeline engineering — from raw document ingestion to context-aware answer synthesis.
+- **Smart Ingestion (Token-Optimized & Parent-Child):** Segmenting documents dynamically into parent contexts (retaining flow) and child chunks (exact semantic vectors), resolving child matches back to full parent passages.
+- **Dynamic Auto-Tuning:** Profiles documents at ingestion time (slides, short files, large books) and automatically adjusts RAG parameters (strategy, chunk sizes, Top-K, expansion, and reranking).
+- **Hybrid Semantic & Keyword Search:** Fusing Chroma dense vectors with BM25 keywords via Weighted Reciprocal Rank Fusion (RRF) to capture both conceptual matches and exact terms (formulas, definitions).
+- **Local ONNX Cross-Encoder Reranking:** Re-scoring and ranking retrieved parent passages using FlashRank on CPU to send only the absolute best contexts to the LLM.
+- **Query Expansion:** Formulating multiple question variations (Multi-Query) or generating hypothetical answers (HyDE) via Gemini to query the databases from multiple search angles.
 
 ---
 
-## Architecture / How It Works
+## Architecture & Pipeline
 
-![DocuMind AI Architecture](assets/architecture.png)
+```mermaid
+graph TD
+    subgraph Ingestion [Ingestion Pipeline]
+        Doc[Documents] --> SC[Smart Chunking: Token-Optimized / Parent-Child]
+        SC --> CE[Context Enrichment: Metadata links child to parent]
+        CE --> Emb[ONNX Embeddings]
+        Emb --> DB[(Vector DB: Chroma)]
+    end
 
-### Step-by-Step Pipeline
+    subgraph Retrieval [Retrieval & Generation Pipeline]
+        Query[Query] --> QE[Query Expansion: Multi-Query / HyDE]
+        QE --> HR[Hybrid Retrieval: BM25 Keyword + Semantic Vector]
+        HR --> RRF[Fusion: Weighted Reciprocal Rank Fusion]
+        RRF --> RE[Context Reconstruction: Resolve to Parent passages]
+        RE --> RR[Reranker: FlashRank ms-marco ONNX model]
+        RR --> TopK[Top-k Context selection]
+        TopK --> LLM[LLM Generation: Gemini QA Chain]
+        LLM --> Ans[LLM Answer]
+    end
+```
+
+### Step-by-Step Process
 
 | Step | Module | Description |
 |------|--------|-------------|
-| **1. Upload** | `app.py` | User provides PDF or TXT files via the Streamlit sidebar |
-| **2. Parse** | `rag/loader.py` | Raw text is extracted from document binaries using `PyPDF` |
-| **3. Chunk** | `rag/chunker.py` | Text is segmented into 1000-character chunks with 200-character overlap via `RecursiveCharacterTextSplitter` |
-| **4. Embed** | `rag/onnx_embedder.py` | Chunks are converted to 384-dimensional dense vectors using `all-MiniLM-L6-v2` via ONNX Runtime (local, free, fast) |
-| **5. Store** | `rag/vectorstore.py` | Vectors are indexed in an ephemeral `ChromaDB` collection with a unique UUID per session |
-| **6. Retrieve** | `rag/vectorstore.py` | The `DynamicRetriever` automatically scales context — full document for summaries, top-10 precision search for specific questions |
-| **7. Answer** | `rag/chain.py` | Retrieved context and query are passed to `Gemini 2.5 Flash` (temperature=0) via a `RetrievalQA` chain |
+| **1. Ingestion Analysis** | `app.py` | Profiles documents by size/page counts to auto-tune ingestion and retrieval configurations (slides deck vs short vs standard vs large). |
+| **2. Document Parsing** | `rag/loader.py` | Text is extracted from PDF and TXT binaries using `PyPDF`. |
+| **3. Smart Chunking** | `rag/chunker.py` | Splits documents by local token counts (model-optimized under 256 tokens) or hierarchically (large parent context chunks containing metadata-linked small child chunks). |
+| **4. ONNX Embeddings** | `rag/onnx_embedder.py` | Converts text to 384-dim vectors locally using `all-MiniLM-L6-v2` via ONNX Runtime CPU. |
+| **5. Ephemeral Indexing** | `rag/vectorstore.py` | Child chunks are indexed in `ChromaDB` and a local `BM25Retriever` is instantiated. |
+| **6. Query Expansion** | `rag/vectorstore.py` | Expands query via Multi-Query (3 variations) or HyDE (Hypothetical Answer) using Gemini. |
+| **7. Hybrid Fusion** | `rag/vectorstore.py` | Retrieves candidates for all queries from Chroma and BM25, merging lists using Weighted RRF. |
+| **8. Context Reconstruction** | `rag/vectorstore.py` | Reconstructs matching child chunks to parent contexts and de-duplicates them. |
+| **9. Cross-Encoder Rerank** | `rag/vectorstore.py` | Reranks parent passages locally using `FlashRank` CPU on the user's original query. |
+| **10. Grounded Answer** | `rag/chain.py` | Selects Top-K reranked passages and prompts Gemini 2.5 Flash (temperature=0) to write a grounded answer. |
 
 ---
 
-## NLP Techniques Used
+## NLP Techniques & Tech Stack
 
-DocuMind AI leverages multiple core NLP techniques across the pipeline:
+### NLP Techniques
+- **Token-based Splitter:** counting tokens using the local `all-MiniLM-L6-v2` vocabulary to prevent vector model context truncation.
+- **Hierarchical Ingestion:** Parent-child text splitting mapping granular search nodes to rich paragraph contexts.
+- **Query Rewrite & Expansion:** Multi-Query and HyDE formulations using Gemini.
+- **Weighted Reciprocal Rank Fusion (RRF):** Fusing rank scores across semantic and keyword retrieval streams with custom weight parameters.
+- **Cross-Encoder Reranking:** Context scoring via MS-MARCO MiniLM cross-encoder.
 
-| NLP Technique | Module | Description |
-|---|---|---|
-| **Tokenization** | `rag/onnx_embedder.py` | HuggingFace fast Rust tokenizer converts raw text into subword token IDs |
-| **Sentence Embeddings** | `rag/onnx_embedder.py` | Transformer encoder (`all-MiniLM-L6-v2`) maps text into 384-dim dense semantic vectors |
-| **Mean Pooling** | `rag/onnx_embedder.py` | Aggregates per-token hidden states into a single sentence-level representation |
-| **L2 Normalization** | `rag/onnx_embedder.py` | Normalizes embedding vectors for cosine similarity search |
-| **Text Splitting** | `rag/chunker.py` | Recursive splitting along natural language boundaries (paragraphs, sentences, words) |
-| **Semantic Similarity Search** | `rag/vectorstore.py` | Cosine similarity over dense embeddings for passage retrieval |
-| **Query Intent Detection** | `rag/vectorstore.py` | Keyword-based classification of summary vs. factual queries in `DynamicRetriever` |
-| **LLM Question Answering** | `rag/chain.py` | Gemini 2.5 Flash performs natural language understanding and grounded answer generation |
-| **Retrieval-Augmented Generation** | Full pipeline | End-to-end RAG architecture grounding LLM responses in retrieved document context |
-
----
-
-## Tech Stack
-
-| Layer | Technology | Role |
-|-------|-----------|------|
-| **UI** | [Streamlit](https://streamlit.io/) | Reactive web interface with custom CSS, chat history, and file uploader |
-| **LLM** | [Google Gemini 2.5 Flash](https://ai.google.dev/) | Answer synthesis with zero-temperature grounding (1M token context window) |
-| **Embeddings** | `all-MiniLM-L6-v2` via [ONNX Runtime](https://onnxruntime.ai/) | Local, high-speed semantic vector representations with no PyTorch overhead |
-| **Vector DB** | [ChromaDB](https://www.trychroma.com/) | In-process similarity search and vector indexing |
-| **Orchestration** | [LangChain](https://langchain.com/) | Pipeline assembly, `RetrievalQA` chain, and prompt templating |
-| **Retrieval** | Custom `DynamicRetriever` | Context-scaling retriever that adapts between full-document and precision modes |
-| **File Parsing** | `PyPDF` | Extraction of text from PDF binaries |
-| **Text Splitting** | `RecursiveCharacterTextSplitter` | Context-aware document segmentation (chunk_size=1000, overlap=200) |
-| **Config** | `python-dotenv` | Secure API key and environment variable management |
-| **Evaluation** | [RAGAS](https://docs.ragas.io/) + `datasets` | Faithfulness, Answer Relevancy, and Context Precision scoring |
+### Core Tech Stack
+- **UI:** Streamlit (clean Corporate Dark-mode interface).
+- **LLM:** Google Gemini 2.5 Flash.
+- **Vector DB:** ChromaDB (in-process ephemeral collections).
+- **Keyword DB:** Rank-BM25.
+- **Reranker:** FlashRank (CPU ONNX ms-marco model).
+- **Embedding Model:** sentence-transformers/all-MiniLM-L6-v2 via ONNX Runtime.
+- **Orchestration:** LangChain.
+- **Evaluation:** RAGAS framework.
 
 ---
 
 ## Getting Started
 
 ### Prerequisites
-
 - Python **3.9+**
-- A **Google API key** with access to Gemini (free tier available at [ai.google.dev](https://ai.google.dev/))
+- A **Google API key** (free tier at [ai.google.dev](https://ai.google.dev/))
 
 ### Installation
-
 ```bash
 # 1. Clone the repository
 git clone https://github.com/Prajwallnaik/DocuMind-AI.git
 cd DocuMind-AI
 
-# 2. Create and activate a virtual environment
+# 2. Create and activate virtual environment
 python -m venv venv
-
-# On macOS / Linux:
-source venv/bin/activate
-
 # On Windows:
 venv\Scripts\activate
+# On macOS/Linux:
+source venv/bin/activate
 
-# 3. Install all dependencies
+# 3. Install dependencies
 pip install -r requirements.txt
 ```
 
 ### Configuration
-
-Create a `.env` file in the project root and add your Google API key:
-
+Create a `.env` file in the project root:
 ```env
 GOOGLE_API_KEY=your_google_api_key_here
 ```
 
-> **Note:** The `OPENAI_API_KEY` field is optional. If it contains a placeholder value, it is automatically ignored at startup.
-
 ### Run the App
-
 ```bash
 streamlit run app.py
 ```
-
-The app will open at `http://localhost:8501` in your browser.
-
-### Usage
-
-1. **Upload** one or more PDF or `.txt` files using the sidebar.
-2. Click **"Process Documents"** — the pipeline will parse, chunk, embed, and index the files.
-3. Once processing is complete, type a question into the chat input.
-4. DocuMind AI will return a concise, professional, grounded answer sourced directly from the uploaded documents.
-5. Ask for a **summary** — the system automatically feeds the entire document to the LLM for a comprehensive, zero-loss summary.
-6. Click **"Reset Knowledge Base"** in the sidebar to clear all data and start fresh.
+Open `http://localhost:8501` to use your dynamic AI study assistant.
 
 ---
 
@@ -148,14 +136,14 @@ The app will open at `http://localhost:8501` in your browser.
 ```text
 DocuMind-AI/
 |
-+-- app.py                  # Streamlit UI -- main entry point, session management & custom CSS
++-- app.py                  # Streamlit UI -- main entry point, profiling & chat dashboard
 |
 +-- rag/                    # Core RAG pipeline package
 |   +-- __init__.py
 |   +-- loader.py           # Document loading & text extraction (PDF / TXT)
-|   +-- chunker.py          # RecursiveCharacterTextSplitter (chunk_size=1000, overlap=200)
+|   +-- chunker.py          # RecursiveCharacterTextSplitter with tokenizer length counting
 |   +-- onnx_embedder.py    # ONNX Runtime embedding model (all-MiniLM-L6-v2) & get_embedding_model()
-|   +-- vectorstore.py      # ChromaDB vectorstore creation & DynamicRetriever (context-scaling)
+|   +-- vectorstore.py      # ChromaDB creation, BM25 initialization, Weighted RRF & FlashRank reranking
 |   +-- chain.py            # LangChain RetrievalQA chain with Gemini 2.5 Flash
 |
 +-- onnx_model/             # Auto-exported ONNX model files (model.onnx, tokenizer.json)
@@ -177,34 +165,16 @@ DocuMind-AI/
 
 ## Features
 
-- **Multi-format support** — Upload and query PDF and plain-text (`.txt`) files
-- **Multi-file upload** — Process several documents simultaneously in one session
-- **100+ page document support** — Handles large documents (100+ pages) with sub-3-second processing times
-- **Whole-document summarization** — Context-scaling `DynamicRetriever` feeds 100% of document content for comprehensive summaries with zero missed keywords or sentences
-- **Semantic search** — Dense vector similarity via ONNX-accelerated `all-MiniLM-L6-v2` embeddings
-- **Grounded answers** — Gemini 2.5 Flash with temperature=0 for factual, non-hallucinated responses
-- **Professional, emoji-free responses** — LLM prompt enforces clean, objective, structured output
-- **Source transparency** — `return_source_documents=True` exposes exactly which chunks informed each answer
-- **Persistent chat history** — Full conversation context is maintained within a session via `st.session_state`
-- **Active Knowledge Base tracking** — Sidebar displays currently indexed documents with a one-click reset option
-- **Local ONNX embeddings** — No external embedding API calls; 2-3x faster inference with zero rate limits
-- **Local vector storage** — ChromaDB runs in-process; no external database or cloud dependency required
-- **Premium dark-mode UI** — Custom-styled Corporate Slate theme with modern typography, sleek scrollbars, and clean card layouts
-- **Secure configuration** — API keys managed entirely through `.env` and `python-dotenv`
-- **RAGAS evaluation** — Built-in evaluation tab measures Faithfulness, Answer Relevancy, and Context Precision using the RAGAS framework
-
----
-
-## Dynamic Context-Scaling Retriever
-
-DocuMind AI includes a custom `DynamicRetriever` that intelligently adapts how much context is sent to the LLM based on the type of query:
-
-| Query Type | Retrieval Strategy | Example Queries |
-|---|---|---|
-| **Summary / Overview** | Fetches 100% of document chunks, sorted by page order | "Summarize this PDF", "Give me an overview", "What are the key takeaways?" |
-| **Specific / Factual** | Top-10 precision semantic search | "What was the revenue in Q3?", "Define the term X" |
-
-This ensures that summaries are comprehensive and cover every section of the document, while specific questions remain fast and precise.
+- **Multi-format support** — Upload and query PDF and plain-text (`.txt`) files.
+- **Multi-file upload** — Process several documents simultaneously in one session.
+- **Automated Document Profiling** — Detects document profiles (Slides Deck, Short Document, Large Volume Document) at ingestion and self-tunes parameter configs dynamically.
+- **Smart Ingestion** — Model-aware Token-Optimized splitting and Parent-Child context mappings.
+- **Hybrid Retrieval** — Fuses semantic vector search and BM25 keyword search via Reciprocal Rank Fusion (RRF).
+- **Query Expansion** — Synthesizes search angles via Gemini Multi-Query and HyDE formulations.
+- **FlashRank CPU Reranking** — Evaluates and ranks retrieved contexts locally for optimal LLM context preparation.
+- **Source Transparency** — Exposes exactly which parent document contexts informed each answer.
+- **Persistent Chat History** — Keeps context across session runs.
+- **Minimalist UI/UX** — Under-the-hood parameters management for a distraction-free user experience.
 
 ---
 
@@ -226,15 +196,6 @@ DocuMind AI includes a dedicated **RAG Evaluation** tab powered by [RAGAS](https
 | **Faithfulness** | Proportion of claims in the answer that are directly supported by the retrieved context. | No |
 | **Answer Relevancy** | Degree to which the generated answer addresses the question asked. | No |
 | **Context Precision** | Whether the most relevant retrieved chunks appear at the top of the ranked list. | Yes |
-
-> All scores are in the range **[0, 1]**. Higher values indicate better pipeline performance. Context Precision is automatically enabled when expected answers are provided for all test cases.
-
-### Implementation
-
-| File | Role |
-|---|---|
-| `evaluate/ragas_eval.py` | Wraps the RAGAS `evaluate()` call; configures Gemini 2.5 Flash as the internal evaluator LLM with rate-limiting |
-| `app.py` (RAG Evaluation tab) | Streamlit UI — collects test cases, invokes the pipeline, and renders metric cards and a per-question breakdown table |
 
 ---
 

@@ -12,3 +12,5 @@ langchain-google-genai
 ragas>=0.2
 datasets
 eval_type_backport
+rank_bm25
+flashrank

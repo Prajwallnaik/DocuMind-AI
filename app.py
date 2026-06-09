@@ -23,6 +23,92 @@ load_dotenv(override=True)
 if "OPENAI_API_KEY" in os.environ and "your_openai" in os.environ["OPENAI_API_KEY"]:
     del os.environ["OPENAI_API_KEY"]
 
+def analyze_documents_and_get_config(documents) -> dict:
+    """Dynamically profiles loaded documents and returns optimized RAG configuration parameters."""
+    if not documents:
+        return {
+            "strategy": "token",
+            "chunk_size": 200,
+            "chunk_overlap": 40,
+            "parent_size": 800,
+            "parent_overlap": 100,
+            "retrieval_type": "hybrid",
+            "k": 8,
+            "alpha": 0.5,
+            "query_expansion_mode": "none",
+            "enable_reranking": False,
+            "doc_profile": "Empty document"
+        }
+        
+    num_pages = len(documents)
+    total_chars = sum(len(doc.page_content) for doc in documents)
+    avg_chars_per_page = total_chars / num_pages if num_pages > 0 else 0
+    
+    is_slides = num_pages > 5 and avg_chars_per_page < 600
+    is_large = total_chars > 150000
+    is_small = total_chars <= 1500
+    
+    if is_slides:
+        profile = f"Sparse Slides Deck ({num_pages} pages, avg {int(avg_chars_per_page)} chars/page)"
+        return {
+            "strategy": "parent_child",
+            "chunk_size": 150,
+            "chunk_overlap": 20,
+            "parent_size": 600,
+            "parent_overlap": 50,
+            "retrieval_type": "hybrid",
+            "k": 8,
+            "alpha": 0.4,
+            "query_expansion_mode": "none",
+            "enable_reranking": True,
+            "doc_profile": profile
+        }
+    elif is_small:
+        profile = f"Short Document ({total_chars} chars, {num_pages} pages)"
+        return {
+            "strategy": "token",
+            "chunk_size": 250,
+            "chunk_overlap": 50,
+            "parent_size": 800,
+            "parent_overlap": 100,
+            "retrieval_type": "hybrid",
+            "k": 5,
+            "alpha": 0.5,
+            "query_expansion_mode": "none",
+            "enable_reranking": False,
+            "doc_profile": profile
+        }
+    elif is_large:
+        profile = f"Large Volume Document ({total_chars} chars, {num_pages} pages)"
+        return {
+            "strategy": "parent_child",
+            "chunk_size": 200,
+            "chunk_overlap": 40,
+            "parent_size": 1000,
+            "parent_overlap": 150,
+            "retrieval_type": "hybrid",
+            "k": 12,
+            "alpha": 0.6,
+            "query_expansion_mode": "multiquery",
+            "enable_reranking": True,
+            "doc_profile": profile
+        }
+    else:
+        profile = f"Standard Document ({total_chars} chars, {num_pages} pages)"
+        return {
+            "strategy": "parent_child",
+            "chunk_size": 200,
+            "chunk_overlap": 40,
+            "parent_size": 800,
+            "parent_overlap": 100,
+            "retrieval_type": "hybrid",
+            "k": 8,
+            "alpha": 0.5,
+            "query_expansion_mode": "hyde",
+            "enable_reranking": True,
+            "doc_profile": profile
+        }
+
 st.set_page_config(
     page_title="Enterprise Document Intelligence", 
     layout="wide", 
@@ -283,7 +369,7 @@ st.markdown("""
             color: #94A3B8;
             margin: 4px 0 0 0;
             font-weight: 400;
-        ">Intelligent Document Intelligence & Retrieval Engine</p>
+        ">AI Study Assistant</p>
     </div>
 </div>
 """, unsafe_allow_html=True)
@@ -293,10 +379,14 @@ if "qa_chain" not in st.session_state:
     st.session_state.qa_chain = None
 if "vectorstore" not in st.session_state:
     st.session_state.vectorstore = None
+if "raw_chunks" not in st.session_state:
+    st.session_state.raw_chunks = None
 if "eval_results" not in st.session_state:
     st.session_state.eval_results = None
 if "processed_files" not in st.session_state:
     st.session_state.processed_files = []
+if "rag_config" not in st.session_state:
+    st.session_state.rag_config = None
 
 # ── Sidebar — document ingestion ───────────────────────────────────────────────
 with st.sidebar:
@@ -309,6 +399,8 @@ with st.sidebar:
     )
     
     st.write("")
+    
+    st.write("")
     process_btn = st.button(
         "Process Documents", 
         type="primary", 
@@ -317,15 +409,15 @@ with st.sidebar:
     )
 
     if process_btn and uploaded_files:
-        # Clear chat history and prior evaluation results when new documents are loaded
         st.session_state.messages = []
         st.session_state.eval_results = None
+        st.session_state.rag_config = None
         
         with st.status("Processing documents...", expanded=True) as status:
             all_chunks = []
             try:
+                loaded_documents = []
                 for uploaded_file in uploaded_files:
-                    # Save uploaded file to a temp file for processing
                     with tempfile.NamedTemporaryFile(delete=False, suffix=f".{uploaded_file.name.split('.')[-1]}") as tmp_file:
                         tmp_file.write(uploaded_file.getvalue())
                         tmp_file_path = tmp_file.name
@@ -333,17 +425,32 @@ with st.sidebar:
                     try:
                         status.write(f"Loading document: {uploaded_file.name}...")
                         documents = load_document(tmp_file_path)
-                        
-                        status.write(f"Splitting {uploaded_file.name} into chunks...")
-                        chunks = split_documents(documents)
-                        all_chunks.extend(chunks)
+                        loaded_documents.extend(documents)
                     finally:
                         try:
                             os.unlink(tmp_file_path)
                         except Exception:
                             pass
                 
+                if loaded_documents:
+                    status.write("Analyzing document profile and auto-tuning parameters...")
+                    config = analyze_documents_and_get_config(loaded_documents)
+                    st.session_state.rag_config = config
+                    
+                    status.write(f"Document profile detected: {config['doc_profile']}")
+                    status.write("Splitting documents into chunks using auto-tuned strategy...")
+                    chunks = split_documents(
+                        loaded_documents, 
+                        strategy=config["strategy"], 
+                        chunk_size=config["chunk_size"], 
+                        chunk_overlap=config["chunk_overlap"],
+                        parent_size=config["parent_size"], 
+                        parent_overlap=config["parent_overlap"]
+                    )
+                    all_chunks = chunks
+                
                 if all_chunks:
+                    st.session_state.raw_chunks = all_chunks
                     status.write("Setting up embedding model...")
                     embedding_model = get_embedding_model()
                     
@@ -352,7 +459,15 @@ with st.sidebar:
                     st.session_state.vectorstore = vectorstore
                     
                     status.write("Creating QA Chain...")
-                    retriever = get_retriever(vectorstore)
+                    retriever = get_retriever(
+                        vectorstore,
+                        chunks=all_chunks,
+                        retrieval_type=config["retrieval_type"],
+                        k=config["k"],
+                        alpha=config["alpha"],
+                        query_expansion_mode=config["query_expansion_mode"],
+                        enable_reranking=config["enable_reranking"]
+                    )
                     qa_chain = create_qa_chain(retriever)
                     st.session_state.qa_chain = qa_chain
                     
@@ -392,13 +507,17 @@ with st.sidebar:
             </div>
             """, unsafe_allow_html=True)
             
+        # RAG profile runs entirely in the background to ensure clean UI/UX
+
         st.write("")
         if st.button("Reset Knowledge Base", type="secondary", use_container_width=True):
             st.session_state.qa_chain = None
             st.session_state.vectorstore = None
+            st.session_state.raw_chunks = None
             st.session_state.processed_files = []
             st.session_state.messages = []
             st.session_state.eval_results = None
+            st.session_state.rag_config = None
             st.rerun()
 
 
