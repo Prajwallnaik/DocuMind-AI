@@ -1,13 +1,5 @@
 import os
 import tempfile
-import sys
-
-# Override standard sqlite3 with pysqlite3 to support ChromaDB on older Windows Python
-try:
-    __import__('pysqlite3')
-    sys.modules['sqlite3'] = sys.modules.pop('pysqlite3')
-except Exception:
-    pass
 
 import streamlit as st
 from dotenv import load_dotenv

@@ -1,7 +1,7 @@
 import uuid
 import os
 from typing import List, Any
-from langchain_community.vectorstores import Chroma
+from langchain_qdrant import QdrantVectorStore
 from langchain_core.retrievers import BaseRetriever
 from langchain_core.callbacks import CallbackManagerForRetrieverRun
 from langchain_core.documents import Document
@@ -192,11 +192,27 @@ Hypothetical Answer:"""
         
         if is_summary:
             try:
-                all_data = self.vectorstore.get()
+                # Retrieve all documents from Qdrant via scroll
+                client = self.vectorstore.client
+                collection_name = self.vectorstore.collection_name
                 documents = []
-                if all_data and "documents" in all_data and all_data["documents"]:
-                    for doc_text, metadata in zip(all_data["documents"], all_data["metadatas"]):
-                        documents.append(Document(page_content=doc_text, metadata=metadata))
+                offset = None
+                while True:
+                    results, next_offset = client.scroll(
+                        collection_name=collection_name,
+                        limit=100,
+                        offset=offset,
+                        with_payload=True,
+                        with_vectors=False,
+                    )
+                    for point in results:
+                        payload = point.payload or {}
+                        page_content = payload.get("page_content", "")
+                        metadata = payload.get("metadata", {})
+                        documents.append(Document(page_content=page_content, metadata=metadata))
+                    if next_offset is None:
+                        break
+                    offset = next_offset
                 if documents:
                     documents = self._reconstruct_parents(documents)
                     documents.sort(key=lambda d: d.metadata.get("page", 0))
@@ -226,10 +242,12 @@ Hypothetical Answer:"""
         return final_docs[:self.k_default]
 
 def create_vectorstore(chunks, embedding_model):
-    vectorstore = Chroma.from_documents(
+    collection_name = f"rag_{uuid.uuid4().hex}"
+    vectorstore = QdrantVectorStore.from_documents(
         documents=chunks,
         embedding=embedding_model,
-        collection_name=f"rag_{uuid.uuid4().hex}"
+        collection_name=collection_name,
+        location=":memory:",
     )
     return vectorstore
 

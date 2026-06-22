@@ -2,13 +2,13 @@
 
 <div align="center">
 
-**AI Study Assistant — powered by RAG, NLP, Gemini, and ChromaDB**
+**AI Study Assistant — powered by RAG, NLP, Gemini, and Qdrant**
 
 [![Python](https://img.shields.io/badge/Python-3.9%2B-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://www.python.org/)
 [![Streamlit](https://img.shields.io/badge/Streamlit-UI-FF4B4B?style=for-the-badge&logo=streamlit&logoColor=white)](https://streamlit.io/)
 [![LangChain](https://img.shields.io/badge/LangChain-Orchestration-1C3C3C?style=for-the-badge&logo=chainlink&logoColor=white)](https://langchain.com/)
 [![Google Gemini](https://img.shields.io/badge/Gemini_2.5_Flash-LLM-4285F4?style=for-the-badge&logo=google&logoColor=white)](https://ai.google.dev/)
-[![ChromaDB](https://img.shields.io/badge/ChromaDB-VectorDB-FF6B35?style=for-the-badge)](https://www.trychroma.com/)
+[![Qdrant](https://img.shields.io/badge/Qdrant-VectorDB-DC244C?style=for-the-badge)](https://qdrant.tech/)
 [![ONNX Runtime](https://img.shields.io/badge/ONNX_Runtime-Embeddings-005CED?style=for-the-badge)](https://onnxruntime.ai/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-22C55E?style=for-the-badge)](./LICENSE)
 [![RAGAS](https://img.shields.io/badge/RAGAS-Evaluation-8B5CF6?style=for-the-badge)](https://docs.ragas.io/)
@@ -27,7 +27,7 @@ Traditional RAG pipelines suffer from information loss (due to model sequence le
 
 - **Smart Ingestion (Token-Optimized & Parent-Child):** Segmenting documents dynamically into parent contexts (retaining flow) and child chunks (exact semantic vectors), resolving child matches back to full parent passages.
 - **Dynamic Auto-Tuning:** Profiles documents at ingestion time (slides, short files, large books) and automatically adjusts RAG parameters (strategy, chunk sizes, Top-K, expansion, and reranking).
-- **Hybrid Semantic & Keyword Search:** Fusing Chroma dense vectors with BM25 keywords via Weighted Reciprocal Rank Fusion (RRF) to capture both conceptual matches and exact terms (formulas, definitions).
+- **Hybrid Semantic & Keyword Search:** Fusing Qdrant dense vectors with BM25 keywords via Weighted Reciprocal Rank Fusion (RRF) to capture both conceptual matches and exact terms (formulas, definitions).
 - **Local ONNX Cross-Encoder Reranking:** Re-scoring and ranking retrieved parent passages using FlashRank on CPU to send only the absolute best contexts to the LLM.
 - **Query Expansion:** Formulating multiple question variations (Multi-Query) or generating hypothetical answers (HyDE) via Gemini to query the databases from multiple search angles.
 
@@ -46,9 +46,9 @@ Traditional RAG pipelines suffer from information loss (due to model sequence le
 | **2. Document Parsing** | `rag/loader.py` | Text is extracted from PDF and TXT binaries using `PyPDF`. |
 | **3. Smart Chunking** | `rag/chunker.py` | Splits documents by local token counts (model-optimized under 256 tokens) or hierarchically (large parent context chunks containing metadata-linked small child chunks). |
 | **4. ONNX Embeddings** | `rag/onnx_embedder.py` | Converts text to 384-dim vectors locally using `all-MiniLM-L6-v2` via ONNX Runtime CPU. |
-| **5. Ephemeral Indexing** | `rag/vectorstore.py` | Child chunks are indexed in `ChromaDB` and a local `BM25Retriever` is instantiated. |
+| **5. Ephemeral Indexing** | `rag/vectorstore.py` | Child chunks are indexed in `Qdrant` (in-memory) and a local `BM25Retriever` is instantiated. |
 | **6. Query Expansion** | `rag/vectorstore.py` | Expands query via Multi-Query (3 variations) or HyDE (Hypothetical Answer) using Gemini. |
-| **7. Hybrid Fusion** | `rag/vectorstore.py` | Retrieves candidates for all queries from Chroma and BM25, merging lists using Weighted RRF. |
+| **7. Hybrid Fusion** | `rag/vectorstore.py` | Retrieves candidates for all queries from Qdrant and BM25, merging lists using Weighted RRF. |
 | **8. Context Reconstruction** | `rag/vectorstore.py` | Reconstructs matching child chunks to parent contexts and de-duplicates them. |
 | **9. Cross-Encoder Rerank** | `rag/vectorstore.py` | Reranks parent passages locally using `FlashRank` CPU on the user's original query. |
 | **10. Grounded Answer** | `rag/chain.py` | Selects Top-K reranked passages and prompts Gemini 2.5 Flash (temperature=0) to write a grounded answer. |
@@ -67,7 +67,7 @@ Traditional RAG pipelines suffer from information loss (due to model sequence le
 ### Core Tech Stack
 - **UI:** Streamlit (clean Corporate Dark-mode interface).
 - **LLM:** Google Gemini 2.5 Flash.
-- **Vector DB:** ChromaDB (in-process ephemeral collections).
+- **Vector DB:** Qdrant (in-memory ephemeral collections).
 - **Keyword DB:** Rank-BM25.
 - **Reranker:** FlashRank (CPU ONNX ms-marco model).
 - **Embedding Model:** sentence-transformers/all-MiniLM-L6-v2 via ONNX Runtime.
@@ -125,7 +125,7 @@ DocuMind-AI/
 |   +-- loader.py           # Document loading & text extraction (PDF / TXT)
 |   +-- chunker.py          # RecursiveCharacterTextSplitter with tokenizer length counting
 |   +-- onnx_embedder.py    # ONNX Runtime embedding model (all-MiniLM-L6-v2) & get_embedding_model()
-|   +-- vectorstore.py      # ChromaDB creation, BM25 initialization, Weighted RRF & FlashRank reranking
+|   +-- vectorstore.py      # Qdrant creation, BM25 initialization, Weighted RRF & FlashRank reranking
 |   +-- chain.py            # LangChain RetrievalQA chain with Gemini 2.5 Flash
 |
 +-- onnx_model/             # Auto-exported ONNX model files (model.onnx, tokenizer.json)
@@ -135,7 +135,7 @@ DocuMind-AI/
 |   +-- ragas_eval.py       # Faithfulness, Answer Relevancy & Context Precision evaluation
 |
 +-- assets/                 # Static assets (architecture diagrams, screenshots)
-+-- chroma_db/              # Local ChromaDB persistence directory
++-- qdrant_data/             # Local Qdrant data directory (if using persistent mode)
 +-- requirements.txt        # Python dependencies
 +-- .env                    # Environment variables (not committed)
 +-- .gitignore
